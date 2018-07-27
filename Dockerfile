@@ -1,9 +1,12 @@
-FROM maven:3.5.0
+FROM maven:3.5.3-jdk-10-slim
 
-COPY ext/* /opt/
-RUN mvn install:install-file -Dfile=/opt/ojdbc4jboss-6.jar -DgroupId=net.persgroep.dependencies -DartifactId=ojdbc4jboss -Dversion=6 -Dpackaging=jar &&\
-    mvn install:install-file -Dfile=/opt/aqapi-11.2.0.4.jar -DgroupId=com.oracle -DartifactId=aqapi -Dversion=11.2.0.4 -Dpackaging=jar &&\
-    mvn install:install-file -Dfile=/opt/jms-1.1.jar -DgroupId=javax.jms -DartifactId=jms -Dversion=1.1 -Dpackaging=jar
+ENV GRADLE_HOME /opt/gradle
+ENV GRADLE_VERSION 4.6
+
+RUN apt-get update && \
+    apt-get install -y wget python python-pip jq
+
+RUN mvn -v
 
 RUN curl "https://s3.amazonaws.com/aws-cli/awscli-bundle.zip" -o "awscli-bundle.zip" &&\
     unzip awscli-bundle.zip &&\
@@ -12,3 +15,27 @@ RUN curl "https://s3.amazonaws.com/aws-cli/awscli-bundle.zip" -o "awscli-bundle.
 
 RUN aws --version
 
+ARG GRADLE_DOWNLOAD_SHA256=98bd5fd2b30e070517e03c51cbb32beee3e2ee1a84003a5a5d748996d4b1b915
+RUN set -o errexit -o nounset \
+	&& echo "Downloading Gradle" \
+	&& wget --no-verbose --output-document=gradle.zip "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" \
+	\
+	&& echo "Checking download hash" \
+	&& echo "${GRADLE_DOWNLOAD_SHA256} *gradle.zip" | sha256sum --check - \
+	\
+	&& echo "Installing Gradle" \
+	&& unzip gradle.zip \
+	&& rm gradle.zip \
+	&& mv "gradle-${GRADLE_VERSION}" "${GRADLE_HOME}/" \
+	&& ln --symbolic "${GRADLE_HOME}/bin/gradle" /usr/bin/gradle \
+	\
+	&& echo "Adding gradle user and group" \
+	&& groupadd --system --gid 1000 gradle \
+	&& useradd --system --gid gradle --uid 1000 --shell /bin/bash --create-home gradle \
+	&& mkdir /home/gradle/.gradle \
+	&& chown --recursive gradle:gradle /home/gradle \
+	\
+	&& echo "Symlinking root Gradle cache to gradle Gradle cache" \
+	&& ln -s /home/gradle/.gradle /root/.gradle
+
+RUN gradle -v
